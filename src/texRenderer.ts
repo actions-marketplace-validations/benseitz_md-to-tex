@@ -249,6 +249,7 @@ export const extensions = [
       if (indirectMatch) {
         const authors = [];
         const pages = [];
+        let prefatoryText = "";
 
         const content = indirectMatch[1];
         
@@ -263,6 +264,11 @@ export const extensions = [
             start: match.index,
             end: match.index + match[0].length
           });
+        }
+        
+        // Extract prefatory text (everything before the first author)
+        if (authorMatches.length > 0) {
+          prefatoryText = content.substring(0, authorMatches[0].start).trim();
         }
         
         // Process each author and find its associated page info
@@ -291,11 +297,12 @@ export const extensions = [
           raw: indirectMatch[0],
           authors,
           pages,
+          prefatoryText,
           isIndirect: true,
         };
       }
     },
-    renderer({ authors, pages, isIndirect }) {
+    renderer({ authors, pages, prefatoryText, isIndirect }) {
       if (isIndirect) {
         const citations = [];
         authors.forEach((author, index) => {
@@ -303,7 +310,14 @@ export const extensions = [
             `\\citeauthor{${author}} \\citeyear[${pages[index]}]{${author}}`
           );
         });
-        return `(${citations.join("; ")})`;
+        const citationText = citations.join("; ");
+        
+        // Include prefatory text if it exists
+        if (prefatoryText) {
+          return `(${prefatoryText} ${citationText})`;
+        } else {
+          return `(${citationText})`;
+        }
       } else {
         return `\\citeauthor{${authors[0]}} (\\citeyear[${pages[0]}]{${authors[0]}})`;
       }
