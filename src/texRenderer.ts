@@ -221,9 +221,8 @@ export const extensions = [
     },
     tokenizer(src, tokens) {
       const directRule =
-        /^@([a-z](?:[a-z-]*[a-z])*[0-9]*[a-z]*)(?:\s\[(.*?)\])?/;
-      const indirectRule =
-        /^\[@[a-z](?:[a-z-]*[a-z])*[0-9]*[a-z]*(,\s(.*?))?(;\s@[a-z][a-z0-9]*(,\s(.*?))?)*\]/;
+        /^@([a-z](?:[a-z-]*[a-z])*[0-9]*[a-z]*)(?:\s\[([^\]]*)\])?/;
+      const indirectRule = /^\[([^[\]]*@[^[\]]+)\]/;
 
       const directMatch = directRule.exec(src);
       if (directMatch) {
@@ -251,16 +250,41 @@ export const extensions = [
         const authors = [];
         const pages = [];
 
-        const parts = indirectMatch[0].slice(1, -1).split(";");
-        parts.forEach((part) => {
-          const [author, page] = part.split(",").map((s) => s.trim());
-          authors.push(author.startsWith("@") ? author.slice(1) : author);
-          if (page) {
-            pages.push(page.replace(/\s/g, "~"));
+        const content = indirectMatch[1];
+        
+        // Find all author positions first
+        const authorRegex = /@([a-z](?:[a-z-]*[a-z])*[0-9]*[a-z]*)/g;
+        const authorMatches = [];
+        let match;
+        
+        while ((match = authorRegex.exec(content)) !== null) {
+          authorMatches.push({
+            author: match[1],
+            start: match.index,
+            end: match.index + match[0].length
+          });
+        }
+        
+        // Process each author and find its associated page info
+        for (let i = 0; i < authorMatches.length; i++) {
+          const currentAuthor = authorMatches[i];
+          const nextAuthor = authorMatches[i + 1];
+          
+          authors.push(currentAuthor.author);
+          
+          // Look for page info after this author
+          const afterAuthor = content.substring(currentAuthor.end);
+          const endPos = nextAuthor ? nextAuthor.start - currentAuthor.end : afterAuthor.length;
+          const segment = afterAuthor.substring(0, endPos);
+          
+          // Check if there's a comma followed by page info (but not followed by another @)
+          const pageMatch = segment.match(/^,\s*([^;@]*?)(?=\s*;|\s*$)/);
+          if (pageMatch) {
+            pages.push(pageMatch[1].trim().replace(/\s/g, "~"));
           } else {
             pages.push("");
           }
-        });
+        }
 
         return {
           type: "cite",
@@ -283,6 +307,28 @@ export const extensions = [
       } else {
         return `\\citeauthor{${authors[0]}} (\\citeyear[${pages[0]}]{${authors[0]}})`;
       }
+    },
+  },
+  {
+    name: "para",
+    level: "inline",
+    start(src) {
+      return src.match(/\(.*?paras?\. /)?.index;
+    },
+    tokenizer(src, tokens) {
+      const rule = /^\((.*?paras?\.) (.*?)\)/;
+      const match = rule.exec(src);
+      if (match) {
+        return {
+          type: "para",
+          raw: match[0],
+          beforeSpace: match[1],
+          afterSpace: match[2],
+        };
+      }
+    },
+    renderer(token) {
+      return `(${token.beforeSpace}~${token.afterSpace})`;
     },
   },
 ];
